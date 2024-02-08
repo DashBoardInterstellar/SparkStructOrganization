@@ -4,30 +4,30 @@ Spark streaming coin average price
 
 from __future__ import annotations
 from pyspark.sql import SparkSession, DataFrame
+from pyspark.sql import types as SparkDataTypeSchema
 from pyspark.sql.streaming import StreamingQuery
 from pyspark.sql.functions import from_json, col, udf, to_json, struct
 from schema.udf_util import streaming_preprocessing
 from schema.data_constructure import average_schema, final_schema, schema
+from schema.abstruct_class import AbstructSparkSettingOrganization
 from util.properties import KAFKA_SERVER, MYSQL_URL, MYSQL_USER, MYSQL_PASSWORD
 
 
-class _SparkSettingOrganization:
+class _ConcreteSparkSettingOrganization(AbstructSparkSettingOrganization):
     """SparkSession Setting 모음"""
-
-    def __init__(self, coin_name: str, topics: str, retrieve_topic: str) -> None:
+    
+    def __init__(self, topics: str | list[str], retrieve_topic: str) -> None:
         """생성자
 
         Args:
-            coin_name (str): 코인 이름
             topics (str): 토픽
             retrieve_topic (str): 처리 후 다시 카프카로 보낼 토픽
         """
-        self._coin_name = coin_name
-        self._topics = topics
-        self._retrieve_topic = retrieve_topic
+        self.topics = topics
+        self.retrieve_topic = retrieve_topic
         self._spark: SparkSession = self._create_spark_session()
         self._streaming_kafka_session: DataFrame = self._stream_kafka_session()
-
+        
     def _create_spark_session(self) -> SparkSession:
         """
         Spark Session Args:
@@ -46,8 +46,9 @@ class _SparkSettingOrganization:
             .master("local[*]")
             .config(
                 "spark.jars.packages",
-                "org.apache.spark:spark-sql-kafka-0-10_2.12:3.3.2,mysql:mysql-connector-java:8.0.28",
+                "com.google.guava:guava:27.0-jre,org.apache.spark:spark-sql-kafka-0-10_2.12:3.3.0,mysql:mysql-connector-java:8.0.28,org.apache.hadoop:hadoop-aws:3.2.2",
             )
+            # .config('spark.hadoop.fs.s3a.aws.credentials.provider', 'org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider')
             .config("spark.streaming.stopGracefullyOnShutdown", "true")
             .config("spark.streaming.backpressure.enabled", "true")
             .config("spark.streaming.kafka.consumer.config.auto.offset.reset", "latest")
@@ -55,6 +56,7 @@ class _SparkSettingOrganization:
             .config("spark.executor.memory", "8g")
             .config("spark.executor.cores", "4")
             .config("spark.cores.max", "16")
+            # .config("spark.kafka.consumer.cache.capacity", "")
             .getOrCreate()
         )
 
@@ -70,7 +72,7 @@ class _SparkSettingOrganization:
         return (
             self._spark.readStream.format("kafka")
             .option("kafka.bootstrap.servers", KAFKA_SERVER)
-            .option("subscribe", "".join(self._topics))
+            .option("subscribe", "".join(self.topics))
             .option("startingOffsets", "earliest")
             .load()
         )
@@ -90,7 +92,7 @@ class _SparkSettingOrganization:
             data_format.writeStream.format("kafka")
             .option("kafka.bootstrap.servers", KAFKA_SERVER)
             .option("topic", self._retrieve_topic)
-            .option("checkpointLocation", f".checkpoint_{self._coin_name}")
+            .option("checkpointLocation", f".checkpoint_{self._name}")
             .option(
                 "value.serializer",
                 "org.apache.kafka.common.serialization.ByteArraySerializer",
@@ -117,8 +119,6 @@ class _SparkSettingOrganization:
                 - 추가로 들어오면 바로 넣기
 
         - trigger(processingTime="1 minute")
-
-
         """
         checkpoint_dir: str = f".checkpoint_{table_name}"
 
@@ -143,30 +143,28 @@ class _SparkSettingOrganization:
         )
 
 
-class SparkStreamingCoinAverage:
+class SparkStreamingCoinAverage(_ConcreteSparkSettingOrganization):
     """
     데이터 처리 클래스
     """
 
-    def __init__(self, coin_name: str, topics: str, retrieve_topic: str):
+    def __init__(self, name: str, topics: str, retrieve_topic: str) -> None:
         """
         Args:
             coin_name (str): 코인 이름
             topics (str): 토픽
             retrieve_topic (str): 처리 후 다시 카프카로 보낼 토픽
         """
-        self.coin_name: str = coin_name
-        self._spark = _SparkSettingOrganization(self.coin_name, topics, retrieve_topic)
-        self._stream_kafka_session: DataFrame = self._spark._stream_kafka_session()
-        self._spark_streaming: StreamingQuery = self._spark._topic_to_spark_streaming
-        self._mysql_micro: StreamingQuery = self._spark._write_to_mysql
+        super().__init__(topics, retrieve_topic)
+        self.name = name
+        self._streaming_kafka_session: DataFrame = self._stream_kafka_session()
 
-    def preprocessing(self) -> DataFrame:
+    def coin_preprocessing(self) -> DataFrame:
         """데이터 처리 pythonUDF사용"""
         average_udf = udf(streaming_preprocessing, average_schema)
 
         return (
-            self._stream_kafka_session.selectExpr("CAST(value AS STRING)")
+            self._streaming_kafka_session.selectExpr("CAST(value AS STRING)")
             .select(from_json("value", schema=final_schema).alias("crypto"))
             .selectExpr(
                 "split(crypto.upbit.market, '-')[1] as name",
@@ -192,7 +190,7 @@ class SparkStreamingCoinAverage:
     def saving_to_mysql_round_query(self):
         """데이터 처리 pythonUDF사용"""
 
-        data_df: DataFrame = self.preprocessing()
+        data_df: DataFrame = self.coin_preprocessing()
 
         return data_df.select(from_json("value", schema).alias("value")).select(
             col("value.average_price.name").alias("name"),
@@ -211,19 +209,74 @@ class SparkStreamingCoinAverage:
     def run_spark_streaming(self):
         """
         Spark Streaming 실행 함수
-
-        Args:
-            coin_name (str): 코인 이름
-            topics (str): 수신할 Kafka 토픽 목록
-            retrieve_topic (str): 결과를 보낼 Kafka 토픽
-        Returns:
-            StreamingQuery: 실행된 스트리밍 쿼리
         """
-
-        query1: StreamingQuery = self._mysql_micro(
-            self.saving_to_mysql_round_query(), f"coin_average_price_{self.coin_name}"
+        query1: StreamingQuery = self._write_to_mysql(
+            self.saving_to_mysql_round_query(), f"coin_average_price_{self.name}"
         )
-        query2: StreamingQuery = self._spark_streaming(self.preprocessing())
+        query2: StreamingQuery = self._topic_to_spark_streaming(self.coin_preprocessing())
 
         query1.awaitTermination()
         query2.awaitTermination()
+
+
+
+class SparkStreamingCongestionAverage(_ConcreteSparkSettingOrganization):
+    """혼잡도"""
+    def __init__(
+        self, 
+        schema,
+        topics: str | list[str],
+        retrieve_topic: str, 
+        temp_view: str, 
+        sql_expression: str, 
+        mysql_table_name: str
+    ) -> None:
+        """생성자
+
+        Args:
+            name (str): 이름
+            topics (str): 토픽
+            retrieve_topic (str): 처리 후 다시 카프카로 보낼 토픽
+            schema (SparkDataTypeSchema): spark 타입
+            temp_view (str): with절 SQL
+            sql_expression (str): SQL절
+            mysql_table_name (str): mysql 테이블
+        """
+        super().__init__(topics, retrieve_topic)
+        self.schema = schema
+        self.temp_view = temp_view
+        self.sql_expression = sql_expression
+        self.mysql_table_name = mysql_table_name
+        self._streaming_kafka_session: DataFrame = self._stream_kafka_session()      
+        
+    def _stream_kafka_session(self) -> DataFrame:
+        """kafka setting wathermark 개선점 필요함"""
+        kafka_session = super()._stream_kafka_session()
+        
+        return (
+            kafka_session.selectExpr("CAST(key as STRING)", "CAST(value as STRING)")
+            .select(from_json(col("value"), schema=self.schema).alias("congestion"))
+            .select("congestion.*")
+            .withColumn("ppltn_time", col("ppltn_time").cast("timestamp"))
+            .withWatermark("ppltn_time", "5 minute")
+        )
+
+    def process(self) -> None:
+        """
+        최종으로 모든 처리 프로세스를 처리하는 프로세스 함수 시작점
+        """
+        congestion_df: DataFrame = self._stream_kafka_session()
+
+        congestion_df.createOrReplaceTempView(self.temp_view)
+        congestion_df.printSchema()
+
+        processed_df = self._spark.sql(self.sql_expression)
+        json_df = processed_df.withColumn("value", to_json(struct("*")))
+        table_injection = processed_df.select("*")
+
+        # # Write to Kafka and Mysql
+        query_kafka: StreamingQuery = self._topic_to_spark_streaming(json_df)
+        query_mysql: StreamingQuery = self._write_to_mysql(table_injection, self.mysql_table_name)
+
+        query_kafka.awaitTermination()
+        query_mysql.awaitTermination()
