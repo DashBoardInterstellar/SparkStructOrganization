@@ -91,7 +91,9 @@ class SparkStreamingQueryOrganization:
         elif query_type == "gender_rate":
             data: str = self.fcst_yn_rate + self.gender_rate
         else:
-            raise ValueError(f"선택한 : {query_type}의 적절한 쿼리문이 존재하지 않습니다")
+            raise ValueError(
+                f"선택한 : {query_type}의 적절한 쿼리문이 존재하지 않습니다"
+            )
 
         main_query: str = self.sql_for_congestion(
             temp_view=self.with_temp_view, fields=data

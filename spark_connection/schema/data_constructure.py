@@ -83,7 +83,7 @@ average_schema = StructType(
     ),
 )
 
-schema = StructType(
+average_price_chema = StructType(
     [
         StructField(
             "average_price",
@@ -112,66 +112,73 @@ class AverageCoinPriceData(BaseModel):
 # -------------------------------------------------------------------------------------------------------#
 
 
-
 # -------------------------------------------------
 #        seoul congestion common schema
 # -------------------------------------------------
 
-common_schema = StructType([
-    StructField("category", StringType(), True),
-    StructField("area_name", StringType(), True),
-    StructField("area_congestion_lvl", IntegerType(), True),
-    StructField("ppltn_time", StringType(), True),
-    StructField("area_congestion_msg", StringType(), True),
-    StructField("area_ppltn_min", IntegerType(), True),
-    StructField("area_ppltn_max", IntegerType(), True),
-])
+common_schema = StructType(
+    [
+        StructField("category", StringType(), True),
+        StructField("area_name", StringType(), True),
+        StructField("area_congestion_lvl", IntegerType(), True),
+        StructField("ppltn_time", StringType(), True),
+        StructField("area_congestion_msg", StringType(), True),
+        StructField("area_ppltn_min", IntegerType(), True),
+        StructField("area_ppltn_max", IntegerType(), True),
+    ]
+)
 
 # ---------------------------------------------------
 #    seoul congestion fcst_yn register schema
 # ---------------------------------------------------ㅉ
 
 fcst_ppltn_schema = ArrayType(
-    StructType([
-        StructField("fcst_time", DoubleType(), True),
-        StructField("fcst_congest_lvl", IntegerType(), True),
-        StructField("fcst_ppltn_min", DoubleType(), True),
-        StructField("fcst_ppltn_max", DoubleType(), True)
-    ])
+    StructType(
+        [
+            StructField("fcst_time", DoubleType(), True),
+            StructField("fcst_congest_lvl", IntegerType(), True),
+            StructField("fcst_ppltn_min", DoubleType(), True),
+            StructField("fcst_ppltn_max", DoubleType(), True),
+        ]
+    )
 )
 
-fcst_yn_schema = StructType([
-    StructField("fcst_ppltn", fcst_ppltn_schema, True)
-])
-fcst_yn = StructType([
-    StructField("fcst_yn", fcst_yn_schema, True)
-])
+fcst_yn_schema = StructType([StructField("fcst_ppltn", fcst_ppltn_schema, True)])
+fcst_yn = StructType([StructField("fcst_yn", fcst_yn_schema, True)])
 # ------------------------------------------------------
 #    seoul congestion gender rate schema register
 # ------------------------------------------------------
 
 gender_rate_schema = StructField(
-    "gender_rate", StructType([
-        StructField("male_ppltn_rate", DoubleType(), True),
-        StructField("female_ppltn_rate", DoubleType(), True),
-    ]), True,
+    "gender_rate",
+    StructType(
+        [
+            StructField("male_ppltn_rate", DoubleType(), True),
+            StructField("female_ppltn_rate", DoubleType(), True),
+        ]
+    ),
+    True,
 )
 
 # ------------------------------------------------------
-#    seoul congestion age rate schema register 
+#    seoul congestion age rate schema register
 # ------------------------------------------------------
 
 age_congestion_specific_schema = StructField(
-    "age_rate", StructType([
-        StructField("ppltn_rate_0", FloatType(), True),
-        StructField("ppltn_rate_10", FloatType(), True),
-        StructField("ppltn_rate_20", FloatType(), True),
-        StructField("ppltn_rate_30", FloatType(), True),
-        StructField("ppltn_rate_40", FloatType(), True),
-        StructField("ppltn_rate_50", FloatType(), True),
-        StructField("ppltn_rate_60", FloatType(), True),
-        StructField("ppltn_rate_70", FloatType(), True),
-    ]), True,
+    "age_rate",
+    StructType(
+        [
+            StructField("ppltn_rate_0", FloatType(), True),
+            StructField("ppltn_rate_10", FloatType(), True),
+            StructField("ppltn_rate_20", FloatType(), True),
+            StructField("ppltn_rate_30", FloatType(), True),
+            StructField("ppltn_rate_40", FloatType(), True),
+            StructField("ppltn_rate_50", FloatType(), True),
+            StructField("ppltn_rate_60", FloatType(), True),
+            StructField("ppltn_rate_70", FloatType(), True),
+        ]
+    ),
+    True,
 )
 
 # -------------------------------------------------------------

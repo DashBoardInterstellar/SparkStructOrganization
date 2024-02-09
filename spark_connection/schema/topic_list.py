@@ -62,4 +62,3 @@ gender_topic_list = [
     POPAREA_GENDER,
     TOURZONE_GENDER,
 ]
-
