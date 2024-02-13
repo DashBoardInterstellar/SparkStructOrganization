@@ -185,20 +185,10 @@ age_congestion_specific_schema = StructField(
 #    seoul congestion  schema register
 # -------------------------------------------------------------
 
-n_fcst_yn = StructField("fcst_yn", StringType(), True)
-
 y_age_congestion_schema = StructType(
     common_schema.fields + fcst_yn.fields + [age_congestion_specific_schema]
 )
 
 y_gender_congestion_schema = StructType(
     common_schema.fields + fcst_yn.fields + [gender_rate_schema]
-)
-
-n_age_congestion_schema = StructType(
-    common_schema.fields + [n_fcst_yn, age_congestion_specific_schema]
-)
-
-n_gender_congestion_schema = StructType(
-    common_schema.fields + [n_fcst_yn, gender_rate_schema]
 )

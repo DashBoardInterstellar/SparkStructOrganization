@@ -9,12 +9,21 @@ from pyspark.sql.functions import from_json, col, udf, to_json, struct
 from schema.udf_util import streaming_preprocessing
 from schema.data_constructure import average_schema, final_schema, average_price_chema
 from schema.abstruct_class import AbstructSparkSettingOrganization
-from util.properties import KAFKA_SERVER, MYSQL_URL, MYSQL_USER, MYSQL_PASSWORD
+from config.properties import (
+    KAFKA_BOOTSTRAP_SERVERS,
+    SPARK_PACKAGE,
+    COIN_MYSQL_URL,
+    COIN_MYSQL_USER,
+    COIN_MYSQL_PASSWORD,
+    CONGESTION_MYSQL_URL,
+    CONGESTION_MYSQL_USER,
+    CONGESTION_MYSQL_PASSWORD,
+)
 
 
 class _ConcreteSparkSettingOrganization(AbstructSparkSettingOrganization):
     """SparkSession Setting 모음"""
-    
+
     def __init__(self, topics: str | list[str], retrieve_topic: str) -> None:
         """생성자
 
@@ -25,8 +34,7 @@ class _ConcreteSparkSettingOrganization(AbstructSparkSettingOrganization):
         self.topics = topics
         self.retrieve_topic = retrieve_topic
         self._spark: SparkSession = self._create_spark_session()
-        self._streaming_kafka_session: DataFrame = self._stream_kafka_session()
-        
+
     def _create_spark_session(self) -> SparkSession:
         """
         Spark Session Args:
@@ -43,10 +51,7 @@ class _ConcreteSparkSettingOrganization(AbstructSparkSettingOrganization):
         return (
             SparkSession.builder.appName("myAppName")
             .master("local[*]")
-            .config(
-                "spark.jars.packages",
-                "com.google.guava:guava:27.0-jre,org.apache.spark:spark-sql-kafka-0-10_2.12:3.3.0,mysql:mysql-connector-java:8.0.28,org.apache.hadoop:hadoop-aws:3.2.2",
-            )
+            .config("spark.jars.packages", SPARK_PACKAGE)
             # .config('spark.hadoop.fs.s3a.aws.credentials.provider', 'org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider')
             .config("spark.streaming.stopGracefullyOnShutdown", "true")
             .config("spark.streaming.backpressure.enabled", "true")
@@ -57,6 +62,33 @@ class _ConcreteSparkSettingOrganization(AbstructSparkSettingOrganization):
             .config("spark.cores.max", "16")
             # .config("spark.kafka.consumer.cache.capacity", "")
             .getOrCreate()
+        )
+
+    def _topic_to_spark_streaming(
+        self, data_format: DataFrame, name: str
+    ) -> StreamingQuery:
+        """
+        Kafka Bootstrap Setting Args:
+            - kafka.bootstrap.servers : Broker 설정
+            - subscribe : 가져올 토픽 (,기준)
+                - ex) "a,b,c,d"
+            - startingOffsets: 최신순
+            - checkpointLocation: 체크포인트
+            - value.serializer: 직렬화 종류
+        """
+        checkpoint_dir: str = f".checkpoint_{name}"
+
+        return (
+            data_format.writeStream.format("kafka")
+            .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP_SERVERS)
+            .option("topic", self.retrieve_topic)
+            .option("checkpointLocation", f".checkpoint_{checkpoint_dir}")
+            .option("startingOffsets", "earliest")
+            .option(
+                "value.serializer",
+                "org.apache.kafka.common.serialization.ByteArraySerializer",
+            )
+            .start()
         )
 
     def _stream_kafka_session(self) -> DataFrame:
@@ -70,75 +102,10 @@ class _ConcreteSparkSettingOrganization(AbstructSparkSettingOrganization):
 
         return (
             self._spark.readStream.format("kafka")
-            .option("kafka.bootstrap.servers", KAFKA_SERVER)
+            .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP_SERVERS)
             .option("subscribe", "".join(self.topics))
             .option("startingOffsets", "earliest")
             .load()
-        )
-
-    def _topic_to_spark_streaming(self, data_format: DataFrame) -> StreamingQuery:
-        """
-        Kafka Bootstrap Setting Args:
-            - kafka.bootstrap.servers : Broker 설정
-            - subscribe : 가져올 토픽 (,기준)
-                - ex) "a,b,c,d"
-            - startingOffsets: 최신순
-            - checkpointLocation: 체크포인트
-            - value.serializer: 직렬화 종류
-        """
-
-        return (
-            data_format.writeStream.format("kafka")
-            .option("kafka.bootstrap.servers", KAFKA_SERVER)
-            .option("topic", self._retrieve_topic)
-            .option("checkpointLocation", f".checkpoint_{self._name}")
-            .option(
-                "value.serializer",
-                "org.apache.kafka.common.serialization.ByteArraySerializer",
-            )
-            .start()
-        )
-
-    def _write_to_mysql(
-        self, data_format: DataFrame, table_name: str
-    ) -> StreamingQuery:
-        """
-        Function Args:
-            - data_format (DataFrame): 저장할 데이터 포맷
-            - table_name (str): 체크포인트 저장할 테이블 이름
-                - ex) .checkpoint_{table_name}
-
-        MySQL Setting Args (_write_batch_to_mysql):
-            - url : JDBC MYSQL connention URL
-            - driver : com.mysql.cj.jdbc.Driver
-            - dbtable : table
-            - user : user
-            - password: password
-            - mode : append
-                - 추가로 들어오면 바로 넣기
-
-        - trigger(processingTime="1 minute")
-        """
-        checkpoint_dir: str = f".checkpoint_{table_name}"
-
-        def _write_batch_to_mysql(batch_df: DataFrame, batch_id) -> None:
-            (
-                batch_df.write.format("jdbc")
-                .option("url", MYSQL_URL)
-                .option("driver", "com.mysql.cj.jdbc.Driver")
-                .option("dbtable", table_name)
-                .option("user", MYSQL_USER)
-                .option("password", MYSQL_PASSWORD)
-                .mode("append")
-                .save()
-            )
-
-        return (
-            data_format.writeStream.outputMode("update")
-            .foreachBatch(_write_batch_to_mysql)
-            .option("checkpointLocation", checkpoint_dir)
-            .trigger(processingTime="1 minute")
-            .start()
         )
 
 
@@ -147,7 +114,7 @@ class SparkStreamingCoinAverage(_ConcreteSparkSettingOrganization):
     데이터 처리 클래스
     """
 
-    def __init__(self, name: str, topics: str, retrieve_topic: str) -> None:
+    def __init__(self, topics: str, retrieve_topic: str) -> None:
         """
         Args:
             coin_name (str): 코인 이름
@@ -155,7 +122,6 @@ class SparkStreamingCoinAverage(_ConcreteSparkSettingOrganization):
             retrieve_topic (str): 처리 후 다시 카프카로 보낼 토픽
         """
         super().__init__(topics, retrieve_topic)
-        self.name = name
         self._streaming_kafka_session: DataFrame = self._stream_kafka_session()
 
     def coin_preprocessing(self) -> DataFrame:
@@ -191,7 +157,9 @@ class SparkStreamingCoinAverage(_ConcreteSparkSettingOrganization):
 
         data_df: DataFrame = self.coin_preprocessing()
 
-        return data_df.select(from_json("value", average_price_chema).alias("value")).select(
+        return data_df.select(
+            from_json("value", average_price_chema).alias("value")
+        ).select(
             col("value.average_price.name").alias("name"),
             col("value.average_price.time").alias("time"),
             col("value.average_price.data.opening_price").alias("opening_price"),
@@ -205,27 +173,74 @@ class SparkStreamingCoinAverage(_ConcreteSparkSettingOrganization):
             ),
         )
 
+    def _coin_write_to_mysql(
+        self, data_format: DataFrame, table_name: str
+    ) -> StreamingQuery:
+        """
+        Function Args:
+            - data_format (DataFrame): 저장할 데이터 포맷
+            - table_name (str): 체크포인트 저장할 테이블 이름
+                - ex) .checkpoint_{table_name}
+
+        MySQL Setting Args (_write_batch_to_mysql):
+            - url : JDBC MYSQL connention URL
+            - driver : com.mysql.cj.jdbc.Driver
+            - dbtable : table
+            - user : user
+            - password: password
+            - mode : append
+                - 추가로 들어오면 바로 넣기
+
+        - trigger(processingTime="1 minute")
+        """
+        checkpoint_dir: str = f".checkpoint_{table_name}"
+
+        def _write_batch_to_mysql(batch_df: DataFrame, batch_id) -> None:
+            (
+                batch_df.write.format("jdbc")
+                .option("url", COIN_MYSQL_URL)
+                .option("driver", "com.mysql.cj.jdbc.Driver")
+                .option("dbtable", table_name)
+                .option("user", COIN_MYSQL_USER)
+                .option("password", COIN_MYSQL_PASSWORD)
+                .mode("append")
+                .save()
+            )
+
+        return (
+            data_format.writeStream.outputMode("update")
+            .foreachBatch(_write_batch_to_mysql)
+            .option("checkpointLocation", checkpoint_dir)
+            .trigger(processingTime="1 minute")
+            .start()
+        )
+
     def run_spark_streaming(self) -> None:
         """
         Spark Streaming 실행 함수
         """
-        query1 = self._write_to_mysql(self.saving_to_mysql_query(), f"coin_average_price_{self.name}")
-        query2 = self._topic_to_spark_streaming(self.coin_preprocessing())
+        query1 = self._coin_write_to_mysql(
+            self.saving_to_mysql_query(), f"coin_average_price_{self.topics[:4]}"
+        )
+        query2 = self._topic_to_spark_streaming(
+            self.coin_preprocessing(), self.topics[:4]
+        )
 
         query1.awaitTermination()
         query2.awaitTermination()
 
 
-
 class SparkStreamingCongestionAverage(_ConcreteSparkSettingOrganization):
     """혼잡도"""
+
     def __init__(
-        self, 
+        self,
         topics: str | list[str],
-        retrieve_topic: str, 
-        temp_view: str, 
-        sql_expression: str, 
-        mysql_table_name: str
+        retrieve_topic: str,
+        temp_view: str,
+        sql_expression: str,
+        mysql_table_name: str,
+        schema,
     ) -> None:
         """생성자
 
@@ -239,21 +254,63 @@ class SparkStreamingCongestionAverage(_ConcreteSparkSettingOrganization):
             mysql_table_name (str): mysql 테이블
         """
         super().__init__(topics, retrieve_topic)
+        self.schema = schema
         self.temp_view = temp_view
         self.sql_expression = sql_expression
         self.mysql_table_name = mysql_table_name
-        self._streaming_kafka_session: DataFrame = self._stream_kafka_session()      
-        
+
     def _stream_kafka_session(self) -> DataFrame:
         """kafka setting wathermark 개선점 필요함"""
         kafka_session = super()._stream_kafka_session()
-        
+
         return (
             kafka_session.selectExpr("CAST(key as STRING)", "CAST(value as STRING)")
-            .select(from_json(col("value"), schema=).alias("congestion"))
+            .select(from_json(col("value"), schema=self.schema).alias("congestion"))
             .select("congestion.*")
             .withColumn("ppltn_time", col("ppltn_time").cast("timestamp"))
             .withWatermark("ppltn_time", "5 minute")
+        )
+
+    def _congestion_write_to_mysql(
+        self, data_format: DataFrame, table_name: str
+    ) -> StreamingQuery:
+        """
+        Function Args:
+            - data_format (DataFrame): 저장할 데이터 포맷
+            - table_name (str): 체크포인트 저장할 테이블 이름
+                - ex) .checkpoint_{table_name}
+
+        MySQL Setting Args (_write_batch_to_mysql):
+            - url : JDBC MYSQL connention URL
+            - driver : com.mysql.cj.jdbc.Driver
+            - dbtable : table
+            - user : user
+            - password: password
+            - mode : append
+                - 추가로 들어오면 바로 넣기
+
+        - trigger(processingTime="1 minute")
+        """
+        checkpoint_dir: str = f".checkpoint_{table_name}"
+
+        def _write_batch_to_mysql(batch_df: DataFrame, batch_id) -> None:
+            (
+                batch_df.write.format("jdbc")
+                .option("url", CONGESTION_MYSQL_URL)
+                .option("driver", "com.mysql.cj.jdbc.Driver")
+                .option("dbtable", table_name)
+                .option("user", CONGESTION_MYSQL_USER)
+                .option("password", CONGESTION_MYSQL_PASSWORD)
+                .mode("append")
+                .save()
+            )
+
+        return (
+            data_format.writeStream.outputMode("update")
+            .foreachBatch(_write_batch_to_mysql)
+            .option("checkpointLocation", checkpoint_dir)
+            .trigger(processingTime="1 minute")
+            .start()
         )
 
     def process(self) -> None:
@@ -270,8 +327,10 @@ class SparkStreamingCongestionAverage(_ConcreteSparkSettingOrganization):
         table_injection = processed_df.select("*")
 
         # # Write to Kafka and Mysql
-        query_kafka = self._topic_to_spark_streaming(json_df)
-        query_mysql = self._write_to_mysql(table_injection, self.mysql_table_name)
+        query_kafka = self._topic_to_spark_streaming(json_df, self.mysql_table_name)
+        query_mysql = self._congestion_write_to_mysql(
+            table_injection, self.mysql_table_name
+        )
 
         query_kafka.awaitTermination()
         query_mysql.awaitTermination()

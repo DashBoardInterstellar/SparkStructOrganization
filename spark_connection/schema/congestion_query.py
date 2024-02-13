@@ -99,3 +99,10 @@ class SparkStreamingQueryOrganization:
             temp_view=self.with_temp_view, fields=data
         )
         return self.with_data_congestion + main_query
+
+
+y_age_query = SparkStreamingQueryOrganization(
+    with_temp_view="congest_age", temp_view="congest_pred_age", data_type="age_rate"
+).y_age_rate_query("gender_rate")
+
+print(y_age_query)
