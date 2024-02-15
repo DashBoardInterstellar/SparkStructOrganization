@@ -95,12 +95,12 @@ average_price_chema = StructType(
 
 # Spark UDF Data Schema
 class CoinPrice(BaseModel):
-    opening_price: float
-    closing_price: float
-    max_price: float
-    min_price: float
-    prev_closing_price: float
-    acc_trade_volume_24h: float
+    opening_price: str
+    closing_price: str
+    max_price: str
+    min_price: str
+    prev_closing_price: str
+    acc_trade_volume_24h: str
 
 
 class AverageCoinPriceData(BaseModel):

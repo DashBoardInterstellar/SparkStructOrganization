@@ -5,11 +5,12 @@ Spark streaming coin average price
 from __future__ import annotations
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.streaming import StreamingQuery
-from pyspark.sql import functions as F
 from pyspark.sql.functions import from_json, col, to_json, struct, split, udf
+
 from schema.udf_util import streaming_preprocessing
 from schema.data_constructure import average_schema, final_schema, average_price_chema
 from schema.abstruct_class import AbstructSparkSettingOrganization
+
 from config.properties import (
     KAFKA_BOOTSTRAP_SERVERS,
     SPARK_PACKAGE,
@@ -55,6 +56,7 @@ class _ConcreteSparkSettingOrganization(AbstructSparkSettingOrganization):
             .master("local[*]")
             .config("spark.jars.packages", f"{SPARK_PACKAGE}")
             # .config('spark.hadoop.fs.s3a.aws.credentials.provider', 'org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider')
+            # .config("spark.kafka.consumer.cache.capacity", "")
             .config("spark.streaming.stopGracefullyOnShutdown", "true")
             .config("spark.streaming.backpressure.enabled", "true")
             .config("spark.streaming.kafka.consumer.config.auto.offset.reset", "latest")
@@ -62,7 +64,6 @@ class _ConcreteSparkSettingOrganization(AbstructSparkSettingOrganization):
             .config("spark.executor.memory", "8g")
             .config("spark.executor.cores", "4")
             .config("spark.cores.max", "16")
-            # .config("spark.kafka.consumer.cache.capacity", "")
             .getOrCreate()
         )
 
@@ -218,7 +219,7 @@ class SparkStreamingCoinAverage(_ConcreteSparkSettingOrganization):
         Spark Streaming 실행 함수
         """
         query1 = self._coin_write_to_mysql(
-            self.saving_to_mysql_query(), f"coin_average_price_{self.topics[:4]}"
+            self.saving_to_mysql_query(), f"table_{self.name}"
         )
         query2 = self._topic_to_spark_streaming(self.coin_preprocessing())
 
