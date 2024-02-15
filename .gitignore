@@ -160,5 +160,7 @@ cython_debug/
 #.idea/
 spark_connection/.checkpoint_BTC/
 spark_connection/.checkpoint_ETH/
+spark_connection/.checkpoint_table_BTC/
+spark_connection/.checkpoint_table_ETH/
 .vscode
 spark_connection/config/setting.conf
