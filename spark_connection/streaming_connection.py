@@ -82,7 +82,7 @@ class _ConcreteSparkSettingOrganization(AbstructSparkSettingOrganization):
             data_format.writeStream.format("kafka")
             .option("kafka.bootstrap.servers", f"{KAFKA_BOOTSTRAP_SERVERS}")
             .option("topic", self.retrieve_topic)
-            .option("checkpointLocation", f".checkpoint_{checkpoint_dir}")
+            .option("checkpointLocation", checkpoint_dir)
             .option("startingOffsets", "earliest")
             .option(
                 "value.serializer",
@@ -220,11 +220,9 @@ class SparkStreamingCoinAverage(_ConcreteSparkSettingOrganization):
         query1 = self._coin_write_to_mysql(
             self.saving_to_mysql_query(), f"coin_average_price_{self.topics[:4]}"
         )
-        query2 = self._topic_to_spark_streaming(
-            self.coin_preprocessing(), self.topics[:4]
-        )
+        query2 = self._topic_to_spark_streaming(self.coin_preprocessing())
 
-        # query1.awaitTermination()
+        query1.awaitTermination()
         query2.awaitTermination()
 
 
@@ -327,7 +325,7 @@ class SparkStreamingCongestionAverage(_ConcreteSparkSettingOrganization):
         table_injection = processed_df.select("*")
 
         # # Write to Kafka and Mysql
-        query_kafka = self._topic_to_spark_streaming(json_df, self.mysql_table_name)
+        query_kafka = self._topic_to_spark_streaming(json_df)
         query_mysql = self._congestion_write_to_mysql(
             table_injection, self.mysql_table_name
         )
