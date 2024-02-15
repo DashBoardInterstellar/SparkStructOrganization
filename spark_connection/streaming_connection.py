@@ -5,7 +5,8 @@ Spark streaming coin average price
 from __future__ import annotations
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.streaming import StreamingQuery
-from pyspark.sql.functions import from_json, col, udf, to_json, struct
+from pyspark.sql import functions as F
+from pyspark.sql.functions import from_json, col, to_json, struct, split, udf
 from schema.udf_util import streaming_preprocessing
 from schema.data_constructure import average_schema, final_schema, average_price_chema
 from schema.abstruct_class import AbstructSparkSettingOrganization
@@ -24,13 +25,14 @@ from config.properties import (
 class _ConcreteSparkSettingOrganization(AbstructSparkSettingOrganization):
     """SparkSession Setting 모음"""
 
-    def __init__(self, topics: str | list[str], retrieve_topic: str) -> None:
+    def __init__(self, name: str, topics: str | list[str], retrieve_topic: str) -> None:
         """생성자
 
         Args:
             topics (str): 토픽
             retrieve_topic (str): 처리 후 다시 카프카로 보낼 토픽
         """
+        self.name = name
         self.topics = topics
         self.retrieve_topic = retrieve_topic
         self._spark: SparkSession = self._create_spark_session()
@@ -51,12 +53,12 @@ class _ConcreteSparkSettingOrganization(AbstructSparkSettingOrganization):
         return (
             SparkSession.builder.appName("myAppName")
             .master("local[*]")
-            .config("spark.jars.packages", SPARK_PACKAGE)
+            .config("spark.jars.packages", f"{SPARK_PACKAGE}")
             # .config('spark.hadoop.fs.s3a.aws.credentials.provider', 'org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider')
             .config("spark.streaming.stopGracefullyOnShutdown", "true")
             .config("spark.streaming.backpressure.enabled", "true")
             .config("spark.streaming.kafka.consumer.config.auto.offset.reset", "latest")
-            .config("spark.sql.adaptive.enabled", "true")
+            .config("spark.sql.adaptive.enabled", "false")
             .config("spark.executor.memory", "8g")
             .config("spark.executor.cores", "4")
             .config("spark.cores.max", "16")
@@ -64,9 +66,7 @@ class _ConcreteSparkSettingOrganization(AbstructSparkSettingOrganization):
             .getOrCreate()
         )
 
-    def _topic_to_spark_streaming(
-        self, data_format: DataFrame, name: str
-    ) -> StreamingQuery:
+    def _topic_to_spark_streaming(self, data_format: DataFrame) -> StreamingQuery:
         """
         Kafka Bootstrap Setting Args:
             - kafka.bootstrap.servers : Broker 설정
@@ -76,11 +76,11 @@ class _ConcreteSparkSettingOrganization(AbstructSparkSettingOrganization):
             - checkpointLocation: 체크포인트
             - value.serializer: 직렬화 종류
         """
-        checkpoint_dir: str = f".checkpoint_{name}"
+        checkpoint_dir: str = f".checkpoint_{self.name}"
 
         return (
             data_format.writeStream.format("kafka")
-            .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP_SERVERS)
+            .option("kafka.bootstrap.servers", f"{KAFKA_BOOTSTRAP_SERVERS}")
             .option("topic", self.retrieve_topic)
             .option("checkpointLocation", f".checkpoint_{checkpoint_dir}")
             .option("startingOffsets", "earliest")
@@ -102,7 +102,7 @@ class _ConcreteSparkSettingOrganization(AbstructSparkSettingOrganization):
 
         return (
             self._spark.readStream.format("kafka")
-            .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP_SERVERS)
+            .option("kafka.bootstrap.servers", f"{KAFKA_BOOTSTRAP_SERVERS}")
             .option("subscribe", "".join(self.topics))
             .option("startingOffsets", "earliest")
             .load()
@@ -114,40 +114,39 @@ class SparkStreamingCoinAverage(_ConcreteSparkSettingOrganization):
     데이터 처리 클래스
     """
 
-    def __init__(self, topics: str, retrieve_topic: str) -> None:
+    def __init__(self, name: str, topics: str, retrieve_topic: str) -> None:
         """
         Args:
             coin_name (str): 코인 이름
             topics (str): 토픽
             retrieve_topic (str): 처리 후 다시 카프카로 보낼 토픽
         """
-        super().__init__(topics, retrieve_topic)
+        super().__init__(name, topics, retrieve_topic)
         self._streaming_kafka_session: DataFrame = self._stream_kafka_session()
 
     def coin_preprocessing(self) -> DataFrame:
         """데이터 처리 pythonUDF사용"""
-        average_udf = udf(streaming_preprocessing, average_schema)
+        average_price = udf(streaming_preprocessing, average_schema)
 
         return (
             self._streaming_kafka_session.selectExpr("CAST(value AS STRING)")
             .select(from_json("value", schema=final_schema).alias("crypto"))
-            .selectExpr(
-                "split(crypto.upbit.market, '-')[1] as name",
-                "crypto.upbit.time as time",
-                "crypto.upbit.data as upbit_price",
-                "crypto.bithumb.data as bithumb_price",
-                "crypto.coinone.data as coinone_price",
-                "crypto.korbit.data as korbit_price",
+            .select(
+                split(col("crypto.upbit.market"), "-").getItem(1).alias("name"),
+                col("crypto.upbit.data").alias("upbit_price"),
+                col("crypto.bithumb.data").alias("bithumb_price"),
+                col("crypto.coinone.data").alias("coinone_price"),
+                col("crypto.korbit.data").alias("korbit_price"),
             )
             .withColumn(
                 "average_price",
-                average_udf(
+                average_price(
                     col("name"),
                     col("upbit_price"),
                     col("bithumb_price"),
                     col("coinone_price"),
-                    col("korbit_price"),
-                ).alias("average_price"),
+                    col("korbit_price")
+                ).alias("average_price")
             )
             .select(to_json(struct(col("average_price"))).alias("value"))
         )
@@ -156,7 +155,6 @@ class SparkStreamingCoinAverage(_ConcreteSparkSettingOrganization):
         """데이터 처리 pythonUDF사용"""
 
         data_df: DataFrame = self.coin_preprocessing()
-
         return data_df.select(
             from_json("value", average_price_chema).alias("value")
         ).select(
@@ -226,7 +224,7 @@ class SparkStreamingCoinAverage(_ConcreteSparkSettingOrganization):
             self.coin_preprocessing(), self.topics[:4]
         )
 
-        query1.awaitTermination()
+        # query1.awaitTermination()
         query2.awaitTermination()
 
 
@@ -235,6 +233,7 @@ class SparkStreamingCongestionAverage(_ConcreteSparkSettingOrganization):
 
     def __init__(
         self,
+        name: str,
         topics: str | list[str],
         retrieve_topic: str,
         temp_view: str,
@@ -253,7 +252,8 @@ class SparkStreamingCongestionAverage(_ConcreteSparkSettingOrganization):
             sql_expression (str): SQL절
             mysql_table_name (str): mysql 테이블
         """
-        super().__init__(topics, retrieve_topic)
+        super().__init__(name, topics, retrieve_topic)
+        self.name = name
         self.schema = schema
         self.temp_view = temp_view
         self.sql_expression = sql_expression

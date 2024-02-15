@@ -1,5 +1,7 @@
 """쿼리 모음집"""
 
+from pyspark.sql import functions as F
+
 
 class SparkStreamingQueryOrganization:
     """
@@ -75,14 +77,6 @@ class SparkStreamingQueryOrganization:
             cg.ppltn_time,
             cg.category
         """
-
-    def n_gender_rate_query(self) -> str:
-        """성별 혼잡도 관련둰 쿼리"""
-        return self.sql_for_congestion("congestion_gender", self.gender_rate)
-
-    def n_age_rate_query(self) -> str:
-        """나이대별 혼잡도"""
-        return self.sql_for_congestion("congestion_age", self.age_rate)
 
     def y_age_rate_query(self, query_type: str) -> str:
         """예측값이 존재하는 쿼리 혼잡도"""
