@@ -60,7 +60,7 @@ class _ConcreteSparkSettingOrganization(AbstructSparkSettingOrganization):
             .config("spark.streaming.stopGracefullyOnShutdown", "true")
             .config("spark.streaming.backpressure.enabled", "true")
             .config("spark.streaming.kafka.consumer.config.auto.offset.reset", "latest")
-            .config("spark.sql.adaptive.enabled", "false")
+            .config("spark.sql.adaptive.enabled", "true")
             .config("spark.executor.memory", "8g")
             .config("spark.executor.cores", "4")
             .config("spark.cores.max", "16")
@@ -133,7 +133,7 @@ class SparkStreamingCoinAverage(_ConcreteSparkSettingOrganization):
             self._streaming_kafka_session.selectExpr("CAST(value AS STRING)")
             .select(from_json("value", schema=final_schema).alias("crypto"))
             .select(
-                split(col("crypto.upbit.market"), "-").getItem(1).alias("name"),
+                split(col("crypto.upbit.market"), "-")[0].alias("name"),
                 col("crypto.upbit.data").alias("upbit_price"),
                 col("crypto.bithumb.data").alias("bithumb_price"),
                 col("crypto.coinone.data").alias("coinone_price"),
