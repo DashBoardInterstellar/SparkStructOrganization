@@ -186,9 +186,7 @@ age_congestion_specific_schema = StructField(
 # -------------------------------------------------------------
 
 y_age_congestion_schema = StructType(
-    common_schema.fields + fcst_yn.fields + [age_congestion_specific_schema]
+    common_schema.fields + [age_congestion_specific_schema]
 )
 
-y_gender_congestion_schema = StructType(
-    common_schema.fields + fcst_yn.fields + [gender_rate_schema]
-)
+y_gender_congestion_schema = StructType(common_schema.fields + [gender_rate_schema])
