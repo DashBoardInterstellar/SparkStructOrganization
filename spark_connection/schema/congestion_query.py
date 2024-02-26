@@ -16,20 +16,21 @@ class SparkStreamingQueryOrganization:
             col(f"age_rate.ppltn_rate_{i}").alias(f"avg_ppltn_rate_{i}")
             for i in range(10, 80, 10)
         ]
-
-        return F.lit(
-            sum(avg_columns_age).astype(FloatType()).alias("average_rate")
-            / len(avg_columns_age)
-        ).alias("average_age_rate")
+        total_age_columns = sum(avg_columns_age)
+        num_age_columns = len(avg_columns_age)
+        return (
+            (total_age_columns / num_age_columns)
+            .cast(FloatType())
+            .alias("average_age_rate")
+        )
 
     def gender_average(self) -> Column:
-        return F.lit(
-            (col("gender_rate.male_ppltn_rate") + col("gender_rate.female_ppltn_rate"))
-            / 2
-        ).alias("average_gender_rate")
+        male_rate = col("gender_rate.male_ppltn_rate")
+        female_rate = col("gender_rate.female_ppltn_rate")
+        return ((male_rate + female_rate) / 2).alias("average_gender_rate")
 
-    def sql_for_congestion(self, fields: DataFrame, query_type: Column) -> str:
-        return fields.groupBy(
+    def generate_congestion(self, fields: DataFrame, query_type: Column) -> DataFrame:
+        grouped_fields = fields.groupBy(
             col("category").alias("category"),
             col("area_name").alias("area_name"),
             F.regexp_replace(col("ppltn_time"), "Z", "").alias("ppltn_time"),
@@ -40,9 +41,14 @@ class SparkStreamingQueryOrganization:
             F.avg(col("area_ppltn_min")).alias("avg_ppltn_min"),
             F.avg(col("area_ppltn_max")).alias("avg_ppltn_max"),
         )
+        return grouped_fields
 
-    def select_query(self, fields: DataFrame, type_: str) -> DataFrame:
-        if type_ == "gender":
-            return self.sql_for_congestion(fields, self.gender_average())
-        if type_ == "age":
-            return self.sql_for_congestion(fields, self.age_average())
+    def select_query(self, fields: DataFrame, query_type: str) -> DataFrame:
+        if query_type == "gender":
+            return self.generate_congestion(fields, self.gender_average())
+        elif query_type == "age":
+            return self.generate_congestion(fields, self.age_average())
+        else:
+            raise ValueError(
+                "Invalid query type. Supported types are 'gender' and 'age'."
+            )
