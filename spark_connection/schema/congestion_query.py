@@ -1,5 +1,3 @@
-"""쿼리 모음집"""
-
 from pyspark.sql import DataFrame, Column
 from pyspark.sql import functions as F
 from pyspark.sql.functions import col
@@ -11,50 +9,65 @@ class SparkStreamingQueryOrganization:
     """
 
     def __init__(self) -> None:
-        self.avg_columns_age = [
-            col(f"age_rate.ppltn_rate_{i}") for i in range(10, 80, 10)
-        ]
+        self.age_columns = [col(f"age_rate.ppltn_rate_{i}") for i in range(10, 80, 10)]
+        self.congestion_age_max = F.greatest(*self.age_columns).alias("1st_age")
+        self.congestion_age_min = F.least(*self.age_columns).alias("7st_age")
 
-    def congestion_age_max(self) -> Column:
-        return F.greatest(*self.avg_columns_age)
+    def _average(self, column: Column) -> Column:
+        """
+        주어진 DataFrame과 열을 사용하여 평균을 계산하는 내부 도우미 메서드
+        """
+        return F.avg(column).alias(f"avg_{column._jc.toString()}")
 
-    def congestion_age_min(self) -> Column:
-        return F.least(*self.avg_columns_age)
-
-    def age_average(self) -> Column:
-        total_age_columns = sum(self.avg_columns_age)
-        num_age_columns = len(self.avg_columns_age)
-        average_age = total_age_columns / num_age_columns
-
-        return average_age.alias("average_age_rate")
-
-    def gender_average(self) -> Column:
-        male_rate = col("gender_rate.male_ppltn_rate")
-        female_rate = col("gender_rate.female_ppltn_rate")
-        return ((male_rate + female_rate) / 2).alias("average_gender_rate")
-
-    def generate_congestion(self, fields: DataFrame, avg_column: Column) -> DataFrame:
-        grouped_fields = fields.groupBy(
+    def _generate_grouped_fields(
+        self, fields: DataFrame, avg_column: Column, extra_columns: list = []
+    ) -> DataFrame:
+        """
+        주어진 DataFrame과 추가 열을 사용하여 그룹화된 필드를 생성하는 내부 도우미 메서드
+        """
+        group_by_columns = [
             col("category").alias("category"),
             col("area_name").alias("area_name"),
             F.regexp_replace(col("ppltn_time"), "Z", "").alias("ppltn_time"),
             col("area_congestion_msg").alias("area_congestion_msg"),
-            self.congestion_age_max().alias("1st_age"),
-            self.congestion_age_min().alias("7st_age"),
-            avg_column.alias("average_value"),
-            *self.avg_columns_age,
-        ).agg(
-            F.avg(col("area_congestion_lvl")).alias("avg_congestion_lvl"),
-            F.avg(col("area_ppltn_min")).alias("avg_ppltn_min"),
-            F.avg(col("area_ppltn_max")).alias("avg_ppltn_max"),
+            col("male_ppltn_rate").alias("male_ppltn_rate"),
+            col("female_ppltn_rate").alias("female_ppltn_rate"),
+            *extra_columns,
+            avg_column,
+        ]
+        agg_columns = [
+            self._average(col("area_congestion_lvl")),
+            self._average(col("area_ppltn_min")),
+            self._average(col("area_ppltn_max")),
+        ]
+        return fields.groupBy(*group_by_columns).agg(*agg_columns)
+
+    def age_average(self) -> Column:
+        """
+        나이 평균을 계산하는 메서드
+        """
+        total_age_column = sum(self.age_columns)
+        num_age_columns = len(self.age_columns)
+        average_age = total_age_column / num_age_columns
+        return average_age.alias("average_age_rate")
+
+    def generate_age(self, fields: DataFrame) -> DataFrame:
+        """
+        나이에 따른 그룹화된 필드를 생성하는 메서드
+        """
+        return self._generate_grouped_fields(
+            fields,
+            self.age_average(),
+            extra_columns=self.age_columns
+            + [self.congestion_age_max, self.congestion_age_min],
         )
-        return grouped_fields
 
     def select_query(self, fields: DataFrame, query_type: str) -> DataFrame:
-        if query_type == "gender":
-            return self.generate_congestion(fields, self.gender_average())
-        elif query_type == "age":
-            return self.generate_congestion(fields, self.age_average())
+        """
+        주어진 쿼리 유형에 따라 적절한 쿼리를 선택하는 메서드
+        """
+        if query_type == "age":
+            return self.generate_age(fields)
         else:
             raise ValueError(
                 f"Invalid query type '{query_type}'. Supported types are 'gender' and 'age'."

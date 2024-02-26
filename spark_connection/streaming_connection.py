@@ -8,7 +8,12 @@ from pyspark.sql.streaming import StreamingQuery
 from pyspark.sql.functions import from_json, col, to_json, struct, split, udf
 
 from schema.udf_util import streaming_preprocessing
-from schema.data_constructure import average_schema, final_schema, average_price_chema
+from schema.data_constructure import (
+    average_schema,
+    final_schema,
+    average_price_chema,
+    y_age_congestion_schema,
+)
 from schema.abstruct_class import AbstructSparkSettingOrganization
 from schema.congestion_query import SparkStreamingQueryOrganization as SparkStructQuery
 
@@ -237,7 +242,6 @@ class SparkStreamingCongestionAverage(_ConcreteSparkSettingOrganization):
         name: str,
         topics: str | list[str],
         retrieve_topic: str,
-        schema,
     ) -> None:
         """생성자
 
@@ -250,7 +254,6 @@ class SparkStreamingCongestionAverage(_ConcreteSparkSettingOrganization):
         super().__init__(name, retrieve_topic)
         self.topic = topics
         self.name = name
-        self.schema = schema
 
     def _stream_kafka_session(self) -> DataFrame:
         """
@@ -275,7 +278,11 @@ class SparkStreamingCongestionAverage(_ConcreteSparkSettingOrganization):
         return (
             self._stream_kafka_session()
             .selectExpr("CAST(key as STRING)", "CAST(value as STRING)")
-            .select(from_json(col("value"), schema=self.schema).alias("congestion"))
+            .select(
+                from_json(col("value"), schema=y_age_congestion_schema).alias(
+                    "congestion"
+                )
+            )
             .select("congestion.*")
             .withColumn("ppltn_time", col("ppltn_time").cast("timestamp"))
             .withWatermark("ppltn_time", "1 minute")

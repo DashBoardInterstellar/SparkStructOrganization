@@ -125,6 +125,8 @@ common_schema = StructType(
         StructField("area_congestion_msg", StringType(), True),
         StructField("area_ppltn_min", IntegerType(), True),
         StructField("area_ppltn_max", IntegerType(), True),
+        StructField("male_ppltn_rate", DoubleType(), True),
+        StructField("female_ppltn_rate", DoubleType(), True),
     ]
 )
 
@@ -145,20 +147,6 @@ fcst_ppltn_schema = ArrayType(
 
 fcst_yn_schema = StructType([StructField("fcst_ppltn", fcst_ppltn_schema, True)])
 fcst_yn = StructType([StructField("fcst_yn", fcst_yn_schema, True)])
-# ------------------------------------------------------
-#    seoul congestion gender rate schema register
-# ------------------------------------------------------
-
-gender_rate_schema = StructField(
-    "gender_rate",
-    StructType(
-        [
-            StructField("male_ppltn_rate", DoubleType(), True),
-            StructField("female_ppltn_rate", DoubleType(), True),
-        ]
-    ),
-    True,
-)
 
 # ------------------------------------------------------
 #    seoul congestion age rate schema register
@@ -188,5 +176,3 @@ age_congestion_specific_schema = StructField(
 y_age_congestion_schema = StructType(
     common_schema.fields + [age_congestion_specific_schema]
 )
-
-y_gender_congestion_schema = StructType(common_schema.fields + [gender_rate_schema])
