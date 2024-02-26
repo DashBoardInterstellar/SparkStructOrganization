@@ -21,12 +21,12 @@ from config.properties import (
 from schema.topic_list import age_topic_list, gender_topic_list
 
 
-def run_spark_streaming1(coin_name: str, topics: str, retrieve_topic: str) -> None:
-    SparkStreamingCoinAverage(coin_name, topics, retrieve_topic).run_spark_streaming()
+# def run_spark_streaming1(coin_name: str, topics: str, retrieve_topic: str) -> None:
+#     SparkStreamingCoinAverage(coin_name, topics, retrieve_topic).run_spark_streaming()
 
 
-def run_spark_streaming2(coin_name: str, topics: str, retrieve_topic: str) -> None:
-    SparkStreamingCoinAverage(coin_name, topics, retrieve_topic).run_spark_streaming()
+# def run_spark_streaming2(coin_name: str, topics: str, retrieve_topic: str) -> None:
+#     SparkStreamingCoinAverage(coin_name, topics, retrieve_topic).run_spark_streaming()
 
 
 def run_spark_streaming3(
@@ -49,13 +49,13 @@ def spark_in_start() -> None:
     """
     multi-Threading in SPARK application
     """
-    with ThreadPoolExecutor(max_workers=4) as executor:
-        executor.submit(
-            run_spark_streaming1, "BTC", BTC_TOPIC_NAME, BTC_AVERAGE_TOPIC_NAME
-        )
-        executor.submit(
-            run_spark_streaming2, "ETH", ETH_TOPIC_NAME, ETH_AVERAGE_TOPIC_NAME
-        )
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        # executor.submit(
+        #     run_spark_streaming1, "BTC", BTC_TOPIC_NAME, BTC_AVERAGE_TOPIC_NAME
+        # )
+        # executor.submit(
+        #     run_spark_streaming2, "ETH", ETH_TOPIC_NAME, ETH_AVERAGE_TOPIC_NAME
+        # )
         executor.submit(
             run_spark_streaming3,
             "age",
@@ -73,4 +73,10 @@ def spark_in_start() -> None:
 
 
 if __name__ == "__main__":
-    spark_in_start()
+    run_spark_streaming4(
+        "age",
+        age_topic_list,
+        AVG_AGE_TOPIC,
+        y_age_congestion_schema,
+    )
+    # spark_in_start()
