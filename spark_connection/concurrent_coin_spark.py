@@ -40,7 +40,7 @@ def spark_in_start() -> None:
     """
     multi-Threading in SPARK application
     """
-    with ThreadPoolExecutor(max_workers=2) as executor:
+    with ThreadPoolExecutor(max_workers=1) as executor:
         executor.submit(
             run_spark_streaming1, "BTC", BTC_TOPIC_NAME, BTC_AVERAGE_TOPIC_NAME
         )
@@ -52,7 +52,6 @@ def spark_in_start() -> None:
             "age",
             age_topic_list,
             AVG_AGE_TOPIC,
-            y_age_congestion_schema,
         )
 
 

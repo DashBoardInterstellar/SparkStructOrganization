@@ -62,13 +62,8 @@ class SparkStreamingQueryOrganization:
             + [self.congestion_age_max, self.congestion_age_min],
         )
 
-    def select_query(self, fields: DataFrame, query_type: str) -> DataFrame:
+    def select_query(self, fields: DataFrame) -> DataFrame:
         """
         주어진 쿼리 유형에 따라 적절한 쿼리를 선택하는 메서드
         """
-        if query_type == "age":
-            return self.generate_age(fields)
-        else:
-            raise ValueError(
-                f"Invalid query type '{query_type}'. Supported types are 'gender' and 'age'."
-            )
+        return self.generate_age(fields)

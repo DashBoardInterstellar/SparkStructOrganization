@@ -336,7 +336,7 @@ class SparkStreamingCongestionAverage(_ConcreteSparkSettingOrganization):
         """
         congestion_df: DataFrame = self._stream_kafka()
         congestion_df.printSchema()
-        data = SparkStructQuery().select_query(congestion_df, self.name)
+        data = SparkStructQuery().select_query(congestion_df)
 
         json_df = data.withColumn("value", to_json(struct("*")))
 
