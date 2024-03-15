@@ -50,6 +50,8 @@ market_schema = StructType(
     ]
 )
 
+socket_schema = ArrayType(market_schema)
+
 final_schema = StructType(
     [
         StructField("upbit", market_schema),

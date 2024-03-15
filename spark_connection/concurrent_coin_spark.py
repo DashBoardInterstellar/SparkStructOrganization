@@ -12,6 +12,7 @@ from typing import Any
 from config.properties import (
     BTC_TOPIC_NAME,
     BTC_AVERAGE_TOPIC_NAME,
+    UPBIT_BTC_REAL_TOPIC_NAME,
     ETH_TOPIC_NAME,
     ETH_AVERAGE_TOPIC_NAME,
     AVG_AGE_TOPIC,
@@ -42,18 +43,21 @@ def spark_in_start() -> None:
     """
     with ThreadPoolExecutor(max_workers=1) as executor:
         executor.submit(
-            run_spark_streaming1, "BTC", BTC_TOPIC_NAME, BTC_AVERAGE_TOPIC_NAME
+            run_spark_streaming1,
+            "BTC",
+            UPBIT_BTC_REAL_TOPIC_NAME,
+            BTC_AVERAGE_TOPIC_NAME,
         )
-        executor.submit(
-            run_spark_streaming2, "ETH", ETH_TOPIC_NAME, ETH_AVERAGE_TOPIC_NAME
-        )
-        executor.submit(
-            run_spark_streaming3,
-            "age",
-            age_topic_list,
-            AVG_AGE_TOPIC,
-        )
+        # executor.submit(
+        #     run_spark_streaming2, "ETH", ETH_TOPIC_NAME, ETH_AVERAGE_TOPIC_NAME
+        # )
+        # executor.submit(
+        #     run_spark_streaming3,
+        #     "age",
+        #     age_topic_list,
+        #     AVG_AGE_TOPIC,
+        # )
 
 
 if __name__ == "__main__":
-    spark_in_start()
+    run_spark_streaming1("BTC", UPBIT_BTC_REAL_TOPIC_NAME, BTC_AVERAGE_TOPIC_NAME)

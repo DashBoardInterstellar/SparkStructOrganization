@@ -12,7 +12,7 @@ def get_utc_time() -> int:
     utc_now = datetime.datetime.now(datetime.timezone.utc)
     return int(utc_now.timestamp())
 
-    
+
 def streaming_preprocessing(name: str, *data: tuple) -> dict | dict[str, Any]:
     """average coin price normalization in spark python udf
 
@@ -35,19 +35,18 @@ def streaming_preprocessing(name: str, *data: tuple) -> dict | dict[str, Any]:
             }
 
     """
-    if not data or any(item is None for item in data):
-        return None
+    # if not data or any(item is None for item in data):
+    #     return None
 
     try:
         # row의 타입 힌트 적용
         row = np.array(data).astype(float)
-
         # value의 타입 힌트 적용
         value: list[tuple[float]] = [tuple(item) for item in row.T]
         average: list[dict[str, str]] = np.mean(value, axis=1).tolist()
     except (ValueError, TypeError) as error:
         return {}
-    
+
     data_dict = CoinPrice(
         opening_price=str(average[0]),
         closing_price=str(average[1]),
@@ -61,6 +60,3 @@ def streaming_preprocessing(name: str, *data: tuple) -> dict | dict[str, Any]:
         name=name, time=get_utc_time(), data=data_dict
     )
     return streaming_data.model_dump(mode="json")
-
-
-

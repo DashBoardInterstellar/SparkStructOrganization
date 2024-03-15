@@ -5,14 +5,16 @@ Spark streaming coin average price
 from __future__ import annotations
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.streaming import StreamingQuery
-from pyspark.sql.functions import from_json, col, to_json, struct, split, udf
+from pyspark.sql.functions import from_json, col, to_json, struct, split, udf, explode
 
 from schema.udf_util import streaming_preprocessing
 from schema.data_constructure import (
     average_schema,
     final_schema,
     average_price_chema,
+    socket_schema,
     y_age_congestion_schema,
+    market_schema,
 )
 from schema.abstruct_class import AbstructSparkSettingOrganization
 from schema.congestion_query import SparkStreamingQueryOrganization as SparkStructQuery
@@ -65,7 +67,7 @@ class _ConcreteSparkSettingOrganization(AbstructSparkSettingOrganization):
             .config("spark.streaming.stopGracefullyOnShutdown", "true")
             .config("spark.streaming.backpressure.enabled", "true")
             .config("spark.streaming.kafka.consumer.config.auto.offset.reset", "latest")
-            .config("spark.sql.adaptive.enabled", "true")
+            .config("spark.sql.adaptive.enabled", "false")
             .config("spark.executor.memory", "8g")
             .config("spark.executor.cores", "4")
             .config("spark.cores.max", "16")
@@ -114,6 +116,7 @@ class SparkStreamingCoinAverage(_ConcreteSparkSettingOrganization):
         super().__init__(name, retrieve_topic)
         self.topic = topics
         self._streaming_kafka_session: DataFrame = self._stream_kafka_session()
+        self.average_price = udf(streaming_preprocessing, average_schema)
 
     def _stream_kafka_session(self) -> DataFrame:
         """
@@ -134,7 +137,6 @@ class SparkStreamingCoinAverage(_ConcreteSparkSettingOrganization):
 
     def coin_preprocessing(self) -> DataFrame:
         """데이터 처리 pythonUDF사용"""
-        average_price = udf(streaming_preprocessing, average_schema)
 
         return (
             self._streaming_kafka_session.selectExpr("CAST(value AS STRING)")
@@ -148,7 +150,7 @@ class SparkStreamingCoinAverage(_ConcreteSparkSettingOrganization):
             )
             .withColumn(
                 "average_price",
-                average_price(
+                self.average_price(
                     col("name"),
                     col("upbit_price"),
                     col("bithumb_price"),
@@ -157,6 +159,25 @@ class SparkStreamingCoinAverage(_ConcreteSparkSettingOrganization):
                 ).alias("average_price"),
             )
             .select(to_json(struct(col("average_price"))).alias("value"))
+        )
+
+    def socket_preprocessing(self) -> DataFrame:
+        """웹소켓 처리"""
+        return (
+            self._streaming_kafka_session.selectExpr("CAST(value as STRING)")
+            .select(from_json("value", schema=socket_schema).alias("crypto"))
+            .select(explode(col("crypto")).alias("crypto"))
+            .select(
+                split(col("crypto.market"), "-")[1].alias("name"),
+                col("crypto.data").alias("price_data"),
+            )
+            .withColumn(
+                "socket_average_price",
+                self.average_price(col("name"), col("price_data")).alias(
+                    "socket_average_price"
+                ),
+            )
+            .select(to_json(struct(col("socket_average_price"))).alias("value"))
         )
 
     def saving_to_mysql_query(self) -> DataFrame:
@@ -228,10 +249,17 @@ class SparkStreamingCoinAverage(_ConcreteSparkSettingOrganization):
         query1 = self._coin_write_to_mysql(
             self.saving_to_mysql_query(), f"table_{self.name}"
         )
-        query2 = self._topic_to_spark_streaming(self.coin_preprocessing())
+        query2 = self._topic_to_spark_streaming(self.socket_preprocessing())
 
         query1.awaitTermination()
         query2.awaitTermination()
+        # query = (
+        #     self.socket_preprocessing()
+        #     .writeStream.outputMode("update")
+        #     .format("console")
+        #     .start()
+        # )
+        # query.awaitTermination()
 
 
 class SparkStreamingCongestionAverage(_ConcreteSparkSettingOrganization):
