@@ -56,10 +56,10 @@ age_topic_list = [
     POPAREA_AGE,
     TOURZONE_AGE,
 ]
-gender_topic_list = [
-    DEVMKT_GENDER,
-    PALCULT_GENDER,
-    PARK_GENDER,
-    POPAREA_GENDER,
-    TOURZONE_GENDER,
-]
+# gender_topic_list = [
+#     DEVMKT_GENDER,
+#     PALCULT_GENDER,
+#     PARK_GENDER,
+#     POPAREA_GENDER,
+#     TOURZONE_GENDER,
+# ]
