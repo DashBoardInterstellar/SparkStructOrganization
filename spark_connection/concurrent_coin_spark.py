@@ -8,7 +8,6 @@ from streaming_connection import (
     SparkStreamingCongestionAverage,
 )
 from schema.data_constructure import y_age_congestion_schema
-from typing import Any
 from config.properties import (
     BTC_TOPIC_NAME,
     BTC_AVERAGE_TOPIC_NAME,
@@ -21,12 +20,20 @@ from config.properties import (
 from schema.topic_list import age_topic_list, gender_topic_list
 
 
-def run_spark_streaming1(coin_name: str, topics: str, retrieve_topic: str) -> None:
-    SparkStreamingCoinAverage(coin_name, topics, retrieve_topic).run_spark_streaming()
+def run_spark_streaming1(
+    coin_name: str, topics: str, retrieve_topic: str, type_
+) -> None:
+    SparkStreamingCoinAverage(
+        coin_name, topics, retrieve_topic, type_
+    ).run_spark_streaming()
 
 
-def run_spark_streaming2(coin_name: str, topics: str, retrieve_topic: str) -> None:
-    SparkStreamingCoinAverage(coin_name, topics, retrieve_topic).run_spark_streaming()
+def run_spark_streaming2(
+    coin_name: str, topics: str, retrieve_topic: str, type_
+) -> None:
+    SparkStreamingCoinAverage(
+        coin_name, topics, retrieve_topic, type_
+    ).run_spark_streaming()
 
 
 def run_spark_streaming3(
@@ -60,4 +67,6 @@ def spark_in_start() -> None:
 
 
 if __name__ == "__main__":
-    run_spark_streaming1("BTC", UPBIT_BTC_REAL_TOPIC_NAME, BTC_AVERAGE_TOPIC_NAME)
+    run_spark_streaming1(
+        "BTC", UPBIT_BTC_REAL_TOPIC_NAME, BTC_AVERAGE_TOPIC_NAME, "socket"
+    )

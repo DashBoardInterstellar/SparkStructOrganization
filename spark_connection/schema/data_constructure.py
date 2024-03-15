@@ -85,14 +85,17 @@ average_schema = StructType(
     ),
 )
 
-average_price_chema = StructType(
-    [
-        StructField(
-            "average_price",
-            StructType(average_schema),
-        )
-    ]
-)
+
+def average_price_schema(type_: str) -> StructType:
+
+    return StructType(
+        [
+            StructField(
+                type_,
+                StructType(average_schema),
+            )
+        ]
+    )
 
 
 # Spark UDF Data Schema

@@ -5,19 +5,14 @@ Spark streaming coin average price
 from __future__ import annotations
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.streaming import StreamingQuery
-from pyspark.sql.functions import from_json, col, to_json, struct, split, udf, explode
+from pyspark.sql.functions import from_json, col, to_json, struct
 
-from schema.udf_util import streaming_preprocessing
-from schema.data_constructure import (
-    average_schema,
-    final_schema,
-    average_price_chema,
-    socket_schema,
-    y_age_congestion_schema,
-    market_schema,
-)
+from schema.data_constructure import y_age_congestion_schema, average_price_schema
 from schema.abstruct_class import AbstructSparkSettingOrganization
-from schema.congestion_query import SparkStreamingQueryOrganization as SparkStructQuery
+from schema.congestion_query import (
+    SparkStreamingQueryOrganization as SparkStructQuery,
+    SparkCoinAverageQueryOrganization as SparkStructCoin,
+)
 
 from config.properties import (
     KAFKA_BOOTSTRAP_SERVERS,
@@ -106,7 +101,7 @@ class SparkStreamingCoinAverage(_ConcreteSparkSettingOrganization):
     데이터 처리 클래스
     """
 
-    def __init__(self, name: str, topics: str, retrieve_topic: str) -> None:
+    def __init__(self, name: str, topics: str, retrieve_topic: str, type_: str) -> None:
         """
         Args:
             coin_name (str): 코인 이름
@@ -116,7 +111,7 @@ class SparkStreamingCoinAverage(_ConcreteSparkSettingOrganization):
         super().__init__(name, retrieve_topic)
         self.topic = topics
         self._streaming_kafka_session: DataFrame = self._stream_kafka_session()
-        self.average_price = udf(streaming_preprocessing, average_schema)
+        self.type_ = type_
 
     def _stream_kafka_session(self) -> DataFrame:
         """
@@ -133,71 +128,6 @@ class SparkStreamingCoinAverage(_ConcreteSparkSettingOrganization):
             .option("subscribe", self.topic)
             .option("startingOffsets", "earliest")
             .load()
-        )
-
-    def coin_preprocessing(self) -> DataFrame:
-        """데이터 처리 pythonUDF사용"""
-
-        return (
-            self._streaming_kafka_session.selectExpr("CAST(value AS STRING)")
-            .select(from_json("value", schema=final_schema).alias("crypto"))
-            .select(
-                split(col("crypto.upbit.market"), "-")[1].alias("name"),
-                col("crypto.upbit.data").alias("upbit_price"),
-                col("crypto.bithumb.data").alias("bithumb_price"),
-                col("crypto.coinone.data").alias("coinone_price"),
-                col("crypto.korbit.data").alias("korbit_price"),
-            )
-            .withColumn(
-                "average_price",
-                self.average_price(
-                    col("name"),
-                    col("upbit_price"),
-                    col("bithumb_price"),
-                    col("coinone_price"),
-                    col("korbit_price"),
-                ).alias("average_price"),
-            )
-            .select(to_json(struct(col("average_price"))).alias("value"))
-        )
-
-    def socket_preprocessing(self) -> DataFrame:
-        """웹소켓 처리"""
-        return (
-            self._streaming_kafka_session.selectExpr("CAST(value as STRING)")
-            .select(from_json("value", schema=socket_schema).alias("crypto"))
-            .select(explode(col("crypto")).alias("crypto"))
-            .select(
-                split(col("crypto.market"), "-")[1].alias("name"),
-                col("crypto.data").alias("price_data"),
-            )
-            .withColumn(
-                "socket_average_price",
-                self.average_price(col("name"), col("price_data")).alias(
-                    "socket_average_price"
-                ),
-            )
-            .select(to_json(struct(col("socket_average_price"))).alias("value"))
-        )
-
-    def saving_to_mysql_query(self) -> DataFrame:
-        """데이터 처리 pythonUDF사용"""
-
-        data_df: DataFrame = self.coin_preprocessing()
-        return data_df.select(
-            from_json("value", average_price_chema).alias("value")
-        ).select(
-            col("value.average_price.name").alias("name"),
-            col("value.average_price.time").alias("time"),
-            col("value.average_price.data.opening_price").alias("opening_price"),
-            col("value.average_price.data.max_price").alias("max_price"),
-            col("value.average_price.data.min_price").alias("min_price"),
-            col("value.average_price.data.prev_closing_price").alias(
-                "prev_closing_price"
-            ),
-            col("value.average_price.data.acc_trade_volume_24h").alias(
-                "acc_trade_volume_24h"
-            ),
         )
 
     def _coin_write_to_mysql(
@@ -242,14 +172,44 @@ class SparkStreamingCoinAverage(_ConcreteSparkSettingOrganization):
             .start()
         )
 
+    def saving_to_mysql_query(
+        self, data_frame_type: DataFrame, connect: str
+    ) -> DataFrame:
+        """데이터 처리 pythonUDF사용"""
+
+        return data_frame_type.select(
+            from_json("value", average_price_schema(connect)).alias("value")
+        ).select(
+            col(f"value.{connect}.name").alias("name"),
+            col(f"value.{connect}.time").alias("time"),
+            col(f"value.{connect}.data.opening_price").alias("opening_price"),
+            col(f"value.{connect}.data.max_price").alias("max_price"),
+            col(f"value.{connect}.data.min_price").alias("min_price"),
+            col(f"value.{connect}.data.prev_closing_price").alias("prev_closing_price"),
+            col(f"value.{connect}.data.acc_trade_volume_24h").alias(
+                "acc_trade_volume_24h"
+            ),
+        )
+
     def run_spark_streaming(self) -> None:
         """
         Spark Streaming 실행 함수
         """
+        if self.type_ == "socket":
+            connect = "socket_average_price"
+            query_collect = SparkStructCoin(
+                self._streaming_kafka_session
+            ).socket_preprocessing()
+        elif self.type_ == "rest":
+            connect = "average_price"
+            query_collect = SparkStructCoin(
+                self._streaming_kafka_session
+            ).coin_preprocessing()
+
         query1 = self._coin_write_to_mysql(
-            self.saving_to_mysql_query(), f"table_{self.name}"
+            self.saving_to_mysql_query(query_collect, connect), f"table_{self.name}"
         )
-        query2 = self._topic_to_spark_streaming(self.socket_preprocessing())
+        query2 = self._topic_to_spark_streaming(query_collect)
 
         query1.awaitTermination()
         query2.awaitTermination()
